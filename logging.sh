@@ -8,36 +8,56 @@ declare -A LOG_LEVELS
 LOG_LEVELS=([DEBUG]=7 [INFO]=6 [NOTICE]=5 [WARNING]=4 [ERROR]=3 [CRITICAL]=2 [ALERT]=1 [EMERGENCY]=0)
 
 # Current (default) filter level
-log_level=${LOG_LEVELS[WARNING]}
+LOG_LEVEL=${LOG_LEVELS[WARNING]}
 
 # log <level> <msg> [msg...]
 #
-#   Format log line and write to stderr. Lines are formatted as:
-#     YYYY-mm-dd HH:MM:SS+ZZ:ZZ LEVEL (func_name) Message
+#   Format log line and write to stderr. 
 #
 log() {
-    _log "${@}";
+    _logging_log "${@}";
 }
-_fmt() {
-    # caller is three stackframes back (_fmt, _log, log, <caller>)
+
+# _logging_fmt <level> <msg> [msg...]
+#
+#   Print formatted message.  Redefine for custom formatting.
+#   This implementation formats lines as:
+#     YYYY-mm-dd HH:MM:SS+ZZ:ZZ LEVEL (func_name) Message
+#
+_logging_fmt() {
+    # caller is three stackframes back (_logging_fmt, _logging_log, log, <caller>)
     local level="$1" cmd="${FUNCNAME[3]}"
     shift
     printf "%s %s (%s) %s\n" "$(date +%Y-%m-%dT%H:%M:%S%z)" \
             "$level" "$cmd" "$@"
 }
-_log() {
+
+# _logging_out <msg> [msg...]
+#
+#   Write log line to stderr. Redefine for custom output.
+#
+_logging_out() {
+    >&2 echo "$@"
+}
+
+# _log <level> <msg> [msg...]
+#
+#   Validates and filters records according to <level>, reads record from stdin,
+#   formats and outputs a log record.
+#
+_logging_log() {
     local level="$1" line=""
     shift
     [ -z "${LOG_LEVELS[$level]+isset}" ] && return 1
-    [ "${LOG_LEVELS[$level]}" -gt "$log_level" ] && return 0
+    [ "${LOG_LEVELS[$level]}" -gt "$LOG_LEVEL" ] && return 0
     if [ -t 0 ]; then
-        >&2 _fmt "$level" "$@"
+        _logging_out "$(_logging_fmt "$level" "$@")"
     else
         while read -r line; do
             if [ -n "$*" ]; then
                 line="$* $line";
             fi
-            >&2 _fmt "$level" "$line"
+            _logging_out "$(_logging_fmt "$level" "$line")"
         done
     fi
 }
@@ -55,50 +75,11 @@ get_level_name() {
 }
 
 # helper functions for each level
-die()    { _log EMERGENCY "${@}"; exit 1; }
-alert()  { _log ALERT "${@}"; }
-crit()   { _log CRITICAL "${@}"; }
-error()  { _log ERROR "${@}"; }
-warn()   { _log WARNING "${@}"; }
-notice() { _log NOTICE "${@}"; }
-info()   { _log INFO "${@}"; }
-debug()  { _log DEBUG "${@}"; }
-
-
-### Example usage ###
-
-# <script>        # WARNING (default)
-# <script> -vv    # INFO (default + 2 verbosity)
-# <script> -q     # disabled (reset level)
-# <script> -qvvv  # CRITICAL (reset + 3 verbosity)
-while getopts ":vq" opt;
-do
-    case $opt in
-        v)
-            log_level=$((log_level + 1))
-            ;;
-        q)
-            log_level=-1
-            ;;
-  esac
-done
-
-foo() {
-    debug "example"
-    info "example"
-    notice "example"
-    warn "example"
-    error "example"
-    crit "example"
-}
-
-# example main
-alert "log level set to '$(get_level_name "$log_level")'"
-foo
-notice "example"
-log ERROR "example"
-echo -e "multi\nline\npipe" | log INFO "pipe:"
-echo "" | log ERROR "pipe:"
-die "example"
-
-echo "Never reached!"
+die()    { _logging_log EMERGENCY "${@}"; exit 1; }
+alert()  { _logging_log ALERT "${@}"; }
+crit()   { _logging_log CRITICAL "${@}"; }
+error()  { _logging_log ERROR "${@}"; }
+warn()   { _logging_log WARNING "${@}"; }
+notice() { _logging_log NOTICE "${@}"; }
+info()   { _logging_log INFO "${@}"; }
+debug()  { _logging_log DEBUG "${@}"; }
