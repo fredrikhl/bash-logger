@@ -17,7 +17,7 @@ while getopts ":vq" opt;
 do
     case $opt in
         v)
-            LOG_LEVEL=$(( log_level + 1 ))
+            LOG_LEVEL=$(( LOG_LEVEL + 1 ))
             ;;
         q)
             LOG_LEVEL=-1
